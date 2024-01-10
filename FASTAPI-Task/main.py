@@ -79,14 +79,20 @@ def print_message(message):
     print(message)
     return f"Message '{message}' printed successfully."
 
-# POST endpoint to create a task and execute it asynchronously
-@app.post("/create-async-task", response_model=dict)
-async def create_async_task(task: TaskCreate, current_user: dict = Depends(get_current_user)):
+
+@celery.task(name='tasks.schedule_print_message')
+def schedule_print_message(task_name, scheduled_time):
+    print(f"Scheduled task: '{task_name}' will be printed at {scheduled_time}")
+    print_message.apply_async(args=[f"Scheduled Task: {task_name}"], eta=scheduled_time)
+
+
+@app.post("/schedule-task", response_model=dict)
+async def schedule_task(task: TaskCreate, scheduled_time: datetime, current_user: dict = Depends(get_current_user)):
     current_time = datetime.utcnow()
 
-    # Enqueue the Celery task for asynchronous execution
-    result = print_message.apply_async(args=[f"Task: {task.task_name}"], countdown=10)
+    # Enqueue the Celery periodic task for scheduled execution
+    schedule_print_message.apply_async(args=[task.task_name, scheduled_time], countdown=10)
 
-    task_data = {"username": current_user["username"], "task_name": task.task_name, "timestamp": current_time, "task_id": result.id}
+    task_data = {"username": current_user["username"], "task_name": task.task_name, "timestamp": current_time, "scheduled_time": scheduled_time}
     tasks_db.append(task_data)
     return task_data
