@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from datetime import datetime
+from typing import List
+from pydantic import BaseModel 
 
 app = FastAPI()
 
@@ -42,7 +45,22 @@ async def authorize_user(current_user: dict = Depends(get_current_user), require
         detail="You don't have access to this resource",
     )
 
-@app.get("/secure-endpoint", dependencies=[Depends(authorize_user)])
-def secure_endpoint(current_user: dict = Depends(get_current_user)):
-    return {"message": "This is a secure endpoint", "user": current_user}
+# Model for the task
+class TaskCreate(BaseModel):
+    task_name: str
 
+tasks_db = []
+
+# POST endpoint to create a task
+@app.post("/create-task", response_model=dict)
+async def create_task(task: TaskCreate, current_user: dict = Depends(get_current_user)):
+    current_time = datetime.utcnow()
+    task_data = {"username": current_user["username"], "task_name": task.task_name, "timestamp": current_time}
+    tasks_db.append(task_data)
+    return task_data
+
+# GET endpoint to get the list of tasks for a logged-in user
+@app.get("/tasks", response_model=List[dict], dependencies=[Depends(authorize_user)])
+async def get_tasks(current_user: dict = Depends(get_current_user)):
+    user_tasks = [task for task in tasks_db if task["username"] == current_user["username"]]
+    return user_tasks
