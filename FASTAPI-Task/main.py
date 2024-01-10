@@ -4,8 +4,15 @@ from jose import JWTError, jwt
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel 
+from celery import Celery
+from celery_config import CELERY_BROKER_URL
 
 app = FastAPI()
+
+celery = Celery(
+    'tasks',
+    broker=CELERY_BROKER_URL,
+)
 
 # Secret key to sign the JWT tokens
 SECRET_KEY = "your-secret-key"
@@ -64,3 +71,22 @@ async def create_task(task: TaskCreate, current_user: dict = Depends(get_current
 async def get_tasks(current_user: dict = Depends(get_current_user)):
     user_tasks = [task for task in tasks_db if task["username"] == current_user["username"]]
     return user_tasks
+
+
+
+@celery.task(name='tasks.print_message')
+def print_message(message):
+    print(message)
+    return f"Message '{message}' printed successfully."
+
+# POST endpoint to create a task and execute it asynchronously
+@app.post("/create-async-task", response_model=dict)
+async def create_async_task(task: TaskCreate, current_user: dict = Depends(get_current_user)):
+    current_time = datetime.utcnow()
+
+    # Enqueue the Celery task for asynchronous execution
+    result = print_message.apply_async(args=[f"Task: {task.task_name}"], countdown=10)
+
+    task_data = {"username": current_user["username"], "task_name": task.task_name, "timestamp": current_time, "task_id": result.id}
+    tasks_db.append(task_data)
+    return task_data
